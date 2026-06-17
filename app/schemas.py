@@ -6,7 +6,8 @@ import enum
 from app.models import (
     UserRole, CaseStatus, PartyType, EvidenceType, EvidenceStatus,
     ExchangeBatchStatus, CrossExaminationOpinion, RelevanceOpinion,
-    LegalityOpinion, VisibilityScope, ReviewStatus, UploadStatus
+    LegalityOpinion, VisibilityScope, ReviewStatus, UploadStatus,
+    OverdueReviewStatus
 )
 
 
@@ -63,7 +64,14 @@ class CaseCreate(CaseBase):
     case_number: str
 
 
-class CaseUpdate(CaseBase):
+class CaseUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    arbitration_tribunal: Optional[str] = None
+    case_amount: Optional[float] = None
+    accepted_at: Optional[datetime] = None
+    hearing_at: Optional[datetime] = None
+    evidence_deadline: Optional[datetime] = None
     case_number: Optional[str] = None
     status: Optional[CaseStatus] = None
 
@@ -189,6 +197,7 @@ class EvidenceUpdate(BaseModel):
     page_count: Optional[int] = None
     catalog_id: Optional[int] = None
     batch_id: Optional[int] = None
+    change_reason: Optional[str] = None
 
 
 class EvidenceResponse(EvidenceBase):
@@ -249,7 +258,12 @@ class ExchangeBatchResponse(ExchangeBatchBase):
     status: ExchangeBatchStatus
     created_by: Optional[int] = None
     activated_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None
+    submitted_by: Optional[int] = None
     closed_at: Optional[datetime] = None
+    is_frozen: bool = False
+    frozen_at: Optional[datetime] = None
+    frozen_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -397,3 +411,74 @@ class PaginatedResponse(BaseModel):
     page: int
     page_size: int
     items: List
+
+
+class EvidenceVersionHistoryResponse(BaseModel):
+    id: int
+    evidence_id: int
+    version_number: int
+    title: Optional[str] = None
+    description: Optional[str] = None
+    evidence_type: Optional[EvidenceType] = None
+    catalog_id: Optional[int] = None
+    page_count: Optional[int] = None
+    file_hash: Optional[str] = None
+    file_size: Optional[int] = None
+    file_path: Optional[str] = None
+    file_name: Optional[str] = None
+    mime_type: Optional[str] = None
+    visibility: Optional[VisibilityScope] = None
+    order_index: int = 0
+    changed_by: Optional[int] = None
+    change_reason: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExchangeBatchSubmitRequest(BaseModel):
+    pass
+
+
+class OverdueReviewBase(BaseModel):
+    late_reason: str
+
+
+class OverdueReviewCreate(OverdueReviewBase):
+    evidence_id: int
+
+
+class OverdueSecretaryReview(BaseModel):
+    status: OverdueReviewStatus
+    other_party_consent: Optional[bool] = None
+    other_party_consent_note: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class OverdueArbitratorReview(BaseModel):
+    status: OverdueReviewStatus
+    arbitrator_opinion: str
+    affects_hearing_date: bool = False
+    hearing_date_change_note: Optional[str] = None
+
+
+class OverdueReviewResponse(BaseModel):
+    id: int
+    evidence_id: int
+    late_reason: str
+    other_party_consent: Optional[bool] = None
+    other_party_consent_note: Optional[str] = None
+    arbitrator_opinion: Optional[str] = None
+    affects_hearing_date: bool = False
+    hearing_date_change_note: Optional[str] = None
+    status: OverdueReviewStatus
+    secretary_reviewer_id: Optional[int] = None
+    arbitrator_reviewer_id: Optional[int] = None
+    secretary_reviewed_at: Optional[datetime] = None
+    arbitrator_reviewed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

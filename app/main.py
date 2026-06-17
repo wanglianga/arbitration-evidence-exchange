@@ -9,7 +9,7 @@ from app.database import Base, engine
 from app.routers import (
     auth, cases, parties, agents, catalogs,
     upload, evidences, batches, cross_examinations,
-    reviews, supplements, hearings
+    reviews, supplements, hearings, overdue_reviews
 )
 
 
@@ -74,3 +74,4 @@ app.include_router(cross_examinations.router)
 app.include_router(reviews.router)
 app.include_router(supplements.router)
 app.include_router(hearings.router)
+app.include_router(overdue_reviews.router)

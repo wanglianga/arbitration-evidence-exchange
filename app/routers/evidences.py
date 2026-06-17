@@ -103,6 +103,19 @@ def create_evidence(
         if not os.path.exists(file_path):
             raise HTTPException(status_code=400, detail="文件不存在")
 
+    if evidence_data.batch_id:
+        batch = db.query(models.ExchangeBatch).filter(
+            models.ExchangeBatch.id == evidence_data.batch_id,
+            models.ExchangeBatch.case_id == case_id
+        ).first()
+        if not batch:
+            raise HTTPException(status_code=404, detail="指定的交换批次不存在")
+        if batch.is_frozen:
+            raise HTTPException(
+                status_code=400,
+                detail="该交换批次已提交冻结，无法添加新证据。如需提交请通过补充材料流程。"
+            )
+
     case = db.query(models.Case).filter(models.Case.id == case_id).first()
     if case.evidence_deadline and datetime.utcnow() > case.evidence_deadline:
         is_overdue = True
@@ -210,6 +223,16 @@ def update_evidence(
     if evidence.submitter_id != current_user.id and current_user.role not in [models.UserRole.ADMIN, models.UserRole.SECRETARY]:
         raise HTTPException(status_code=403, detail="无权修改此证据")
 
+    if evidence.batch_id:
+        batch = db.query(models.ExchangeBatch).filter(
+            models.ExchangeBatch.id == evidence.batch_id
+        ).first()
+        if batch and batch.is_frozen:
+            raise HTTPException(
+                status_code=400,
+                detail="该证据所属的交换批次已提交冻结，无法修改。如需调整请通过补充材料流程提交。"
+            )
+
     if evidence_data.catalog_id and evidence_data.catalog_id != evidence.catalog_id:
         new_catalog = db.query(models.EvidenceCatalog).filter(
             models.EvidenceCatalog.id == evidence_data.catalog_id,
@@ -221,6 +244,37 @@ def update_evidence(
             raise HTTPException(status_code=400, detail="目标证据目录已冻结")
 
     update_data = evidence_data.model_dump(exclude_unset=True)
+    change_reason = update_data.pop("change_reason", None)
+
+    fields_to_check = ["title", "description", "evidence_type", "catalog_id", "page_count", "visibility", "batch_id"]
+    has_changes = any(field in update_data for field in fields_to_check)
+
+    if has_changes:
+        last_version = db.query(models.EvidenceVersionHistory).filter(
+            models.EvidenceVersionHistory.evidence_id == evidence.id
+        ).order_by(models.EvidenceVersionHistory.version_number.desc()
+        ).first()
+        next_version = (last_version.version_number + 1) if last_version else 1
+
+        version_entry = models.EvidenceVersionHistory(
+            evidence_id=evidence.id,
+            version_number=next_version,
+            title=evidence.title,
+            description=evidence.description,
+            evidence_type=evidence.evidence_type,
+            catalog_id=evidence.catalog_id,
+            page_count=evidence.page_count,
+            file_hash=evidence.file_hash,
+            file_size=evidence.file_size,
+            file_path=evidence.file_path,
+            file_name=evidence.file_name,
+            mime_type=evidence.mime_type,
+            visibility=evidence.visibility,
+            changed_by=current_user.id,
+            change_reason=change_reason or "修改证据信息"
+        )
+        db.add(version_entry)
+
     for key, value in update_data.items():
         setattr(evidence, key, value)
 
@@ -253,6 +307,31 @@ def submit_evidence(
 
     if not evidence.file_path:
         raise HTTPException(status_code=400, detail="请先上传证据文件")
+
+    if evidence.batch_id:
+        batch = db.query(models.ExchangeBatch).filter(
+            models.ExchangeBatch.id == evidence.batch_id
+        ).first()
+        if batch and batch.is_frozen:
+            raise HTTPException(
+                status_code=400,
+                detail="该证据所属的交换批次已提交冻结，无法再次提交。如需提交请通过补充材料流程。"
+            )
+
+    if evidence.is_overdue and current_user.role in [models.UserRole.CLAIMANT, models.UserRole.RESPONDENT, models.UserRole.AGENT]:
+        overdue_review = db.query(models.OverdueEvidenceReview).filter(
+            models.OverdueEvidenceReview.evidence_id == evidence.id
+        ).first()
+        if not overdue_review:
+            raise HTTPException(
+                status_code=400,
+                detail="该证据已过举证期限，不能直接提交。请先通过超期证据审核接口提交迟交理由并等待审核。"
+            )
+        if overdue_review.status not in [models.OverdueReviewStatus.APPROVED]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"该超期证据正在审核中（当前状态：{overdue_review.status.value}），请等待审核通过后再提交。"
+            )
 
     evidence.status = models.EvidenceStatus.SUBMITTED
     db.commit()
@@ -309,8 +388,44 @@ def delete_evidence(
     if not evidence:
         raise HTTPException(status_code=404, detail="证据不存在")
 
+    if evidence.batch_id:
+        batch = db.query(models.ExchangeBatch).filter(
+            models.ExchangeBatch.id == evidence.batch_id
+        ).first()
+        if batch and batch.is_frozen:
+            raise HTTPException(
+                status_code=400,
+                detail="该证据所属的交换批次已提交冻结，无法删除。"
+            )
+
     if evidence.status not in [models.EvidenceStatus.DRAFT, models.EvidenceStatus.WITHDRAWN]:
         raise HTTPException(status_code=400, detail="只有草稿或已撤回状态的证据可以删除")
 
     db.delete(evidence)
     db.commit()
+
+
+@router.get("/{evidence_id}/versions", response_model=List[schemas.EvidenceVersionHistoryResponse])
+def list_evidence_versions(
+    case_id: int,
+    evidence_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    check_case_access(case_id, current_user, db)
+
+    evidence = db.query(models.Evidence).filter(
+        models.Evidence.id == evidence_id,
+        models.Evidence.case_id == case_id
+    ).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="证据不存在")
+
+    if not check_evidence_visibility(evidence, current_user, db):
+        raise HTTPException(status_code=403, detail="无权查看此证据")
+
+    versions = db.query(models.EvidenceVersionHistory).filter(
+        models.EvidenceVersionHistory.evidence_id == evidence_id
+    ).order_by(models.EvidenceVersionHistory.version_number.desc()
+    ).all()
+    return versions

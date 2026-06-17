@@ -54,7 +54,15 @@ class EvidenceStatus(str, enum.Enum):
 class ExchangeBatchStatus(str, enum.Enum):
     DRAFT = "draft"
     ACTIVE = "active"
+    SUBMITTED = "submitted"
     CLOSED = "closed"
+
+
+class OverdueReviewStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ARBITRATOR_REVIEW = "arbitrator_review"
 
 
 class CrossExaminationOpinion(str, enum.Enum):
@@ -235,6 +243,8 @@ class Evidence(Base):
     hearing_citations = relationship("HearingCitation", back_populates="evidence")
     supplements = relationship("SupplementaryMaterial", back_populates="evidence", cascade="all, delete-orphan", foreign_keys="SupplementaryMaterial.evidence_id")
     supplementary_of = relationship("SupplementaryMaterial", back_populates="supplementary_evidence", uselist=False, foreign_keys="SupplementaryMaterial.supplementary_evidence_id")
+    version_history = relationship("EvidenceVersionHistory", back_populates="evidence", cascade="all, delete-orphan", order_by="EvidenceVersionHistory.version_number.desc()")
+    overdue_review = relationship("OverdueEvidenceReview", back_populates="evidence", uselist=False, cascade="all, delete-orphan")
 
 
 class ExchangeBatch(Base):
@@ -250,7 +260,12 @@ class ExchangeBatch(Base):
     deadline = Column(DateTime(timezone=True))
     created_by = Column(Integer, ForeignKey("users.id"))
     activated_at = Column(DateTime(timezone=True))
+    submitted_at = Column(DateTime(timezone=True))
+    submitted_by = Column(Integer, ForeignKey("users.id"))
     closed_at = Column(DateTime(timezone=True))
+    is_frozen = Column(Boolean, default=False)
+    frozen_at = Column(DateTime(timezone=True))
+    frozen_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -344,3 +359,50 @@ class ChunkUpload(Base):
     case_id = Column(Integer, ForeignKey("cases.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True))
+
+
+class EvidenceVersionHistory(Base):
+    __tablename__ = "evidence_version_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    evidence_id = Column(Integer, ForeignKey("evidences.id"), nullable=False)
+    version_number = Column(Integer, nullable=False, default=1)
+    title = Column(String(500))
+    description = Column(Text)
+    evidence_type = Column(Enum(EvidenceType))
+    catalog_id = Column(Integer, ForeignKey("evidence_catalogs.id"))
+    page_count = Column(Integer)
+    file_hash = Column(String(128))
+    file_size = Column(BigInteger)
+    file_path = Column(String(1000))
+    file_name = Column(String(500))
+    mime_type = Column(String(200))
+    visibility = Column(Enum(VisibilityScope))
+    order_index = Column(Integer, default=0)
+    changed_by = Column(Integer, ForeignKey("users.id"))
+    change_reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    evidence = relationship("Evidence", back_populates="version_history")
+
+
+class OverdueEvidenceReview(Base):
+    __tablename__ = "overdue_evidence_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    evidence_id = Column(Integer, ForeignKey("evidences.id"), nullable=False, unique=True)
+    late_reason = Column(Text, nullable=False)
+    other_party_consent = Column(Boolean)
+    other_party_consent_note = Column(Text)
+    arbitrator_opinion = Column(Text)
+    affects_hearing_date = Column(Boolean, default=False)
+    hearing_date_change_note = Column(Text)
+    status = Column(Enum(OverdueReviewStatus), nullable=False, default=OverdueReviewStatus.PENDING)
+    secretary_reviewer_id = Column(Integer, ForeignKey("users.id"))
+    arbitrator_reviewer_id = Column(Integer, ForeignKey("users.id"))
+    secretary_reviewed_at = Column(DateTime(timezone=True))
+    arbitrator_reviewed_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    evidence = relationship("Evidence", back_populates="overdue_review")
