@@ -6,7 +6,7 @@ from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_user, require_roles
 from app.routers.parties import check_case_access
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/cases/{case_id}/catalogs", tags=["证据目录"])
 
@@ -149,7 +149,7 @@ def freeze_catalog(
         raise HTTPException(status_code=404, detail="目录不存在")
 
     catalog.is_frozen = True
-    catalog.frozen_at = datetime.utcnow()
+    catalog.frozen_at = datetime.now(timezone.utc)
     catalog.frozen_by = current_user.id
 
     def freeze_children(parent_id: int):
@@ -158,7 +158,7 @@ def freeze_catalog(
         ).all()
         for child in children:
             child.is_frozen = True
-            child.frozen_at = datetime.utcnow()
+            child.frozen_at = datetime.now(timezone.utc)
             child.frozen_by = current_user.id
             freeze_children(child.id)
 

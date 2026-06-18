@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app import models, schemas
@@ -52,10 +52,10 @@ def create_review(
 
     if review_data.status == models.ReviewStatus.APPROVED:
         evidence.status = models.EvidenceStatus.APPROVED
-        db_review.reviewed_at = datetime.utcnow()
+        db_review.reviewed_at = datetime.now(timezone.utc)
     elif review_data.status == models.ReviewStatus.REJECTED:
         evidence.status = models.EvidenceStatus.REJECTED
-        db_review.reviewed_at = datetime.utcnow()
+        db_review.reviewed_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(db_review)
@@ -112,10 +112,10 @@ def update_review(
         if evidence:
             if review_data.status == models.ReviewStatus.APPROVED:
                 evidence.status = models.EvidenceStatus.APPROVED
-                review.reviewed_at = datetime.utcnow()
+                review.reviewed_at = datetime.now(timezone.utc)
             elif review_data.status == models.ReviewStatus.REJECTED:
                 evidence.status = models.EvidenceStatus.REJECTED
-                review.reviewed_at = datetime.utcnow()
+                review.reviewed_at = datetime.now(timezone.utc)
             elif review_data.status == models.ReviewStatus.PENDING:
                 evidence.status = models.EvidenceStatus.REVIEWING
 

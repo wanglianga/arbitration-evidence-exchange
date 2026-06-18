@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 from app.database import get_db
@@ -117,8 +117,13 @@ def create_evidence(
             )
 
     case = db.query(models.Case).filter(models.Case.id == case_id).first()
-    if case.evidence_deadline and datetime.utcnow() > case.evidence_deadline:
-        is_overdue = True
+    now_utc = datetime.now(timezone.utc)
+    if case.evidence_deadline:
+        deadline = case.evidence_deadline
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+        if now_utc > deadline:
+            is_overdue = True
 
     db_evidence = models.Evidence(
         case_id=case_id,
@@ -363,7 +368,7 @@ def withdraw_evidence(
         raise HTTPException(status_code=403, detail="无权撤回此证据")
 
     evidence.status = models.EvidenceStatus.WITHDRAWN
-    evidence.withdrawn_at = datetime.utcnow()
+    evidence.withdrawn_at = datetime.now(timezone.utc)
     evidence.withdrawn_reason = withdraw_data.reason
     evidence.withdrawn_by = current_user.id
 

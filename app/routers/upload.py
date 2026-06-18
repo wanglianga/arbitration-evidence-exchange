@@ -5,7 +5,7 @@ import os
 import uuid
 import hashlib
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app import models, schemas
@@ -159,7 +159,7 @@ async def upload_chunk(
         file_hash = calculate_file_hash(final_path)
         db_upload.file_hash = file_hash
         db_upload.status = models.UploadStatus.COMPLETED
-        db_upload.completed_at = datetime.utcnow()
+        db_upload.completed_at = datetime.now(timezone.utc)
 
         shutil.rmtree(chunk_dir, ignore_errors=True)
 

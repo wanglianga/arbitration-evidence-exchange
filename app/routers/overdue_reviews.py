@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app import models, schemas
@@ -124,7 +124,7 @@ def secretary_review(
     review.other_party_consent_note = review_data.other_party_consent_note
     review.status = review_data.status
     review.secretary_reviewer_id = current_user.id
-    review.secretary_reviewed_at = datetime.utcnow()
+    review.secretary_reviewed_at = datetime.now(timezone.utc)
 
     if review_data.status == models.OverdueReviewStatus.APPROVED:
         evidence = db.query(models.Evidence).filter(models.Evidence.id == review.evidence_id).first()
@@ -167,7 +167,7 @@ def arbitrator_review(
     review.hearing_date_change_note = review_data.hearing_date_change_note
     review.status = review_data.status
     review.arbitrator_reviewer_id = current_user.id
-    review.arbitrator_reviewed_at = datetime.utcnow()
+    review.arbitrator_reviewed_at = datetime.now(timezone.utc)
 
     if review_data.status == models.OverdueReviewStatus.APPROVED:
         evidence = db.query(models.Evidence).filter(models.Evidence.id == review.evidence_id).first()

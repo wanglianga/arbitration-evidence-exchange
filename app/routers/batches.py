@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app import models, schemas
@@ -121,7 +121,7 @@ def activate_batch(
         raise HTTPException(status_code=400, detail="只有草稿状态的批次可以激活")
 
     batch.status = models.ExchangeBatchStatus.ACTIVE
-    batch.activated_at = datetime.utcnow()
+    batch.activated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(batch)
@@ -148,10 +148,10 @@ def submit_batch(
         raise HTTPException(status_code=400, detail="只有草稿或激活状态的批次可以提交")
 
     batch.status = models.ExchangeBatchStatus.SUBMITTED
-    batch.submitted_at = datetime.utcnow()
+    batch.submitted_at = datetime.now(timezone.utc)
     batch.submitted_by = current_user.id
     batch.is_frozen = True
-    batch.frozen_at = datetime.utcnow()
+    batch.frozen_at = datetime.now(timezone.utc)
     batch.frozen_by = current_user.id
 
     evidences = db.query(models.Evidence).filter(
@@ -208,7 +208,7 @@ def close_batch(
         raise HTTPException(status_code=400, detail="只有激活或已提交状态的批次可以关闭")
 
     batch.status = models.ExchangeBatchStatus.CLOSED
-    batch.closed_at = datetime.utcnow()
+    batch.closed_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(batch)
