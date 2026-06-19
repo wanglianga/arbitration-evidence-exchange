@@ -125,6 +125,15 @@ def create_evidence(
         if now_utc > deadline:
             is_overdue = True
 
+    evidence_status = models.EvidenceStatus.DRAFT
+    if is_overdue and current_user.role in [models.UserRole.CLAIMANT, models.UserRole.RESPONDENT, models.UserRole.AGENT]:
+        evidence_status = models.EvidenceStatus.REVIEWING
+        if not evidence_data.late_reason or not evidence_data.late_reason.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="已过举证期限，提交超期证据时必须提供迟交理由（late_reason）。"
+            )
+
     db_evidence = models.Evidence(
         case_id=case_id,
         catalog_id=evidence_data.catalog_id,
@@ -141,9 +150,20 @@ def create_evidence(
         mime_type=mime_type,
         submitter_id=current_user.id,
         submitter_party_id=submitter_party.id if submitter_party else None,
-        is_overdue=is_overdue
+        is_overdue=is_overdue,
+        status=evidence_status
     )
     db.add(db_evidence)
+    db.flush()
+
+    if is_overdue and evidence_status == models.EvidenceStatus.REVIEWING:
+        db_overdue_review = models.OverdueEvidenceReview(
+            evidence_id=db_evidence.id,
+            late_reason=evidence_data.late_reason.strip(),
+            status=models.OverdueReviewStatus.PENDING
+        )
+        db.add(db_overdue_review)
+
     db.commit()
     db.refresh(db_evidence)
     return db_evidence
@@ -305,6 +325,11 @@ def submit_evidence(
         raise HTTPException(status_code=404, detail="证据不存在")
 
     if evidence.status not in [models.EvidenceStatus.DRAFT, models.EvidenceStatus.REJECTED]:
+        if evidence.status == models.EvidenceStatus.REVIEWING and evidence.is_overdue:
+            raise HTTPException(
+                status_code=400,
+                detail="该超期证据正在秘书审核流程中，不能直接提交。请等待审核通过后自动进入正式目录。"
+            )
         raise HTTPException(status_code=400, detail=f"当前状态 {evidence.status.value} 无法提交")
 
     if evidence.submitter_id != current_user.id and current_user.role not in [models.UserRole.ADMIN, models.UserRole.SECRETARY]:

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
@@ -187,6 +188,7 @@ class EvidenceCreate(EvidenceBase):
     catalog_id: int
     batch_id: Optional[int] = None
     upload_id: Optional[str] = None
+    late_reason: Optional[str] = None
 
 
 class EvidenceUpdate(BaseModel):
@@ -219,6 +221,7 @@ class EvidenceResponse(EvidenceBase):
     withdrawn_reason: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    overdue_review: Optional[OverdueReviewResponse] = None
 
     class Config:
         from_attributes = True

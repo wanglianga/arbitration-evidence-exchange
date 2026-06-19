@@ -11,6 +11,7 @@ env/
 !.env.example
 
 uploads/
+*.db
 *.log
 logs/
 tmp/

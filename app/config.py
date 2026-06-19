@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "仲裁证据交换服务"
     DEBUG: bool = True
 
-    DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/arbitration_evidence"
+    DATABASE_URL: str = "sqlite:///./arbitration_evidence.db"
 
     SECRET_KEY: str = "your-secret-key-change-in-production-xxxxxxxxxxxxxxxxxxxx"
     ALGORITHM: str = "HS256"

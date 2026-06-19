@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timezone
@@ -11,7 +12,7 @@ from app.routers.parties import check_case_access
 router = APIRouter(prefix="/api/cases/{case_id}/overdue-reviews", tags=["超期证据审核"])
 
 
-@router.post("", response_model=schemas.OverdueReviewResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=schemas.OverdueReviewResponse)
 def create_overdue_review(
     case_id: int,
     review_data: schemas.OverdueReviewCreate,
@@ -37,7 +38,15 @@ def create_overdue_review(
         models.OverdueEvidenceReview.evidence_id == review_data.evidence_id
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="该证据已存在超期审核记录")
+        if existing.status == models.OverdueReviewStatus.PENDING:
+            existing.late_reason = review_data.late_reason
+            db.commit()
+            db.refresh(existing)
+            return existing
+        raise HTTPException(
+            status_code=400,
+            detail=f"该证据已存在超期审核记录（当前状态：{existing.status.value}），无法重复创建或修改迟交理由。"
+        )
 
     db_review = models.OverdueEvidenceReview(
         evidence_id=review_data.evidence_id,
@@ -47,7 +56,10 @@ def create_overdue_review(
     db.add(db_review)
     db.commit()
     db.refresh(db_review)
-    return db_review
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=schemas.OverdueReviewResponse.model_validate(db_review).model_dump(mode="json")
+    )
 
 
 @router.get("", response_model=List[schemas.OverdueReviewResponse])
